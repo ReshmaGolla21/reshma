@@ -1,0 +1,111 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "S3 Bucket with KMS Encryption and Bucket Policy",
+    "Resources": {
+      "nobitakey": {
+        "Type": "AWS::KMS::Key",
+        "Properties": {
+          "Description": "KMS Key for S3 bucket encryption",
+          "KeyPolicy": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Principal": {
+                  "AWS": {
+                    "Fn::Sub": "arn:aws:iam::${AWS::AccountId}:root"
+                  }
+                },
+                "Action": "kms:*",
+                "Resource": "*"
+              },
+              {
+                "Effect": "Allow",
+                "Principal": {
+                  "AWS": "*"
+                },
+                "Action": [
+                  "kms:Encrypt",
+                  "kms:Decrypt",
+                  "kms:ReEncrypt*",
+                  "kms:GenerateDataKey*",
+                  "kms:DescribeKey"
+                ],
+                "Resource": "*",
+                "Condition": {
+                  "StringEquals": {
+                    "kms:ViaService": {
+                      "Fn::Sub": "s3.${AWS::Region}.amazonaws.com"
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "doremonbucket": {
+        "Type": "AWS::S3::Bucket",
+        "Properties": {
+          "BucketName": {
+            "Fn::Sub": "doremon-bucket-${AWS::AccountId}-${AWS::Region}"
+          },
+          "BucketEncryption": {
+            "ServerSideEncryptionConfiguration": [
+              {
+                "ServerSideEncryptionByDefault": {
+                  "SSEAlgorithm": "aws:kms",
+                  "KMSMasterKeyID": {
+                    "Ref": "nobitakey"
+                  }
+                }
+              }
+            ]
+          },
+          "LifecycleConfiguration": {
+            "Rules":[
+              {
+                "Id":"ChagingObjectToGlacierAfter90daysAndDeletingAfter365days",
+                "Prefix":"",
+                "Status":"Enabled",
+                "Transitions":[
+                  {
+                    "TransitionInDays":90,
+                    "StorageClass":"GLACIER"
+                  }
+                ],
+                "ExpirationInDays":365
+              }
+            ]
+          }
+        }
+      },
+      "doremonbucketPolicy": {
+        "Type": "AWS::S3::BucketPolicy",
+        "Properties": {
+          "Bucket": {
+            "Ref": "doremonbucket"
+          },
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Deny",
+                "Principal": "*",
+                "Action": "s3:PutObject",
+                "Resource": {
+                  "Fn::Sub": "arn:aws:s3:::${doremonbucket}/*"
+                },
+                "Condition": {
+                  "StringNotEquals": {
+                    "s3:x-amz-server-side-encryption": "aws:kms"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+  
